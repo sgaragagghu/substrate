@@ -505,7 +505,8 @@ impl<B: BlockT> ChainSync<B> {
 		}
 	}
 
-	/// Number of active sync requests.
+	/// Number of active forks requests. This inludes
+	/// request that are pending or can be issued right away.
 	pub fn num_sync_requests(&self) -> usize {
 		self.fork_targets.values().filter(|f| f.number <= self.best_queued_number).count()
 	}
