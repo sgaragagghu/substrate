@@ -1040,14 +1040,7 @@ fn syncs_all_forks_from_single_peer() {
 	net.peer(1).push_blocks(10, false);
 
 	// poll until the two nodes connect, otherwise announcing the block will not work
-	block_on(futures::future::poll_fn::<(), _>(|cx| {
-		net.poll(cx);
-		if net.peer(0).num_peers() == 0 {
-			Poll::Pending
-		} else {
-			Poll::Ready(())
-		}
-	}));
+	net.block_until_connected();
 
 	// Peer 0 produces new blocks and announces.
 	let branch1 = net.peer(0).push_blocks_at(BlockId::Number(10), 2, true);
@@ -1094,4 +1087,3 @@ fn syncs_after_missing_announcement() {
 	net.block_until_sync();
 	assert!(net.peer(1).client().header(&BlockId::Hash(final_block)).unwrap().is_some());
 }
-
