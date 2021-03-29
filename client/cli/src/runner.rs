@@ -66,14 +66,14 @@ where
 
 	let t1 = ctrl_c().fuse();
 	let t2 = func;
-
+warn!("AOOOO prima");
 	pin_mut!(t1, t2);
 
 	select! {
 		_ = t1 => {},
 		res = t2 => res?,
 	}
-
+warn!("AOOOO dopo");
 	Ok(())
 }
 
