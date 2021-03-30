@@ -29,6 +29,7 @@ use sp_utils::metrics::{TOKIO_THREADS_ALIVE, TOKIO_THREADS_TOTAL};
 use std::marker::PhantomData;
 use sc_service::Error as ServiceError;
 use crate::error::Error as CliError;
+use tokio::sync::mpsc::Receiver;
 
 #[cfg(target_family = "unix")]
 async fn main<F, E>(func: F) -> std::result::Result<(), E>
@@ -57,7 +58,10 @@ where
 }
 
 #[cfg(not(unix))]
-async fn main<F, E>(func: F) -> std::result::Result<(), E>
+async fn main<F, E>(
+	func: F,
+	shutdown_receiver: Receiver<std::result::Result<(), E>>,
+) -> std::result::Result<(), E>
 where
 	F: Future<Output = std::result::Result<(), E>> + future::FusedFuture,
 	E: std::error::Error + Send + Sync + 'static + From<ServiceError>,
@@ -96,6 +100,7 @@ fn run_until_exit<F, E>(
 	mut tokio_runtime: tokio::runtime::Runtime,
 	future: F,
 	task_manager: TaskManager,
+	shutdown_receiver: Receiver<std::result::Result<(), E>>,
 ) -> std::result::Result<(), E>
 where
 	F: Future<Output = std::result::Result<(), E>> + future::Future,
@@ -104,7 +109,7 @@ where
 	let f = future.fuse();
 	pin_mut!(f);
 
-	tokio_runtime.block_on(main(f))?;
+	tokio_runtime.block_on(main(f, shutdown_receiver))?;
 	tokio_runtime.block_on(task_manager.clean_shutdown());
 
 	Ok(())
@@ -180,9 +185,28 @@ impl<C: SubstrateCli> Runner<C> {
 
 	/// A helper function that runs a node with tokio and stops if the process receives the signal
 	/// `SIGTERM` or `SIGINT`.
+	pub fn run_node_until_exiti2<F, E>(
+		mut self,
+		initialize: impl FnOnce(Configuration) -> F,
+		shutdown_receiver: Receiver<std::result::Result<(), E>>,
+	) -> std::result::Result<(), E>
+	where
+		F: Future<Output = std::result::Result<TaskManager, E>>,
+		E: std::error::Error + Send + Sync + 'static /*+ From<ServiceError>*/,
+	{
+		//self.print_node_infos();
+		//let mut task_manager = self.tokio_runtime.block_on(initialize(self.config))?;
+		//let res = self.tokio_runtime.block_on(main::<_, E>(task_manager.future().fuse(), shutdown_receiver));
+		//self.tokio_runtime.block_on(task_manager.clean_shutdown());
+		Ok(())
+	}
+
+	/// A helper function that runs a node with tokio and stops if the process receives the signal
+	/// `SIGTERM` or `SIGINT`.
 	pub fn run_node_until_exit<F, E>(
 		mut self,
 		initialize: impl FnOnce(Configuration) -> F,
+		shutdown_receiver: Receiver<std::result::Result<(), sc_service::Error>>,
 	) -> std::result::Result<(), E>
 	where
 		F: Future<Output = std::result::Result<TaskManager, E>>,
@@ -190,7 +214,7 @@ impl<C: SubstrateCli> Runner<C> {
 	{
 		self.print_node_infos();
 		let mut task_manager = self.tokio_runtime.block_on(initialize(self.config))?;
-		let res = self.tokio_runtime.block_on(main(task_manager.future().fuse()));
+		let res = self.tokio_runtime.block_on(main(task_manager.future().fuse(), shutdown_receiver));
 		self.tokio_runtime.block_on(task_manager.clean_shutdown());
 		Ok(res?)
 	}
@@ -210,13 +234,14 @@ impl<C: SubstrateCli> Runner<C> {
 	/// the signal `SIGTERM` or `SIGINT`.
 	pub fn async_run<F, E>(
 		self, runner: impl FnOnce(Configuration) -> std::result::Result<(F, TaskManager), E>,
+		shutdown_receiver: Receiver<std::result::Result<(), E>>,
 	) -> std::result::Result<(), E>
 	where
 		F: Future<Output = std::result::Result<(), E>>,
 		E: std::error::Error + Send + Sync + 'static + From<ServiceError> + From<CliError>,
 	{
 		let (future, task_manager) = runner(self.config)?;
-		run_until_exit::<_, E>(self.tokio_runtime, future, task_manager)
+		run_until_exit::<_, E>(self.tokio_runtime, future, task_manager, shutdown_receiver)
 	}
 
 	/// Get an immutable reference to the node Configuration
